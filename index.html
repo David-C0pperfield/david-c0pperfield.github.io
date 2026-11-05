@@ -1,33 +1,324 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="zh-CN">
 <head>
-    <title>David Copperfield's Site</title>
     <meta charset="utf-8">
     <meta name="author" content="科波菲尔">
-    <meta name="description" content="建设中">
+    <meta name="description" content="David Copperfield 的个人站点 — 闪击战ID大百科、法语学习、WOTB日志工具">
+    <title>科波菲尔的个人站点</title>
+    <link rel="shortcut icon" type="image/x-icon" href="/wotb-id/favicon.ico">
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
+        :root {
+            --bg: #0f1117;
+            --surface: #181b24;
+            --surface-hover: #1f2331;
+            --border: #2a2e3d;
+            --text: #e2e5f0;
+            --text-dim: #8b90a5;
+            --accent-1: #f59e0b;
+            --accent-2: #3b82f6;
+            --accent-3: #10b981;
+        }
 
-    <meta http-equive="Content-Type" content="text/html;charset=utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-    <meta content="yes" name="apple-mobile-web-app-capable">
-    <meta content="black" name="apple-mobile-web-app-status-bar-style">
-    <meta content="telephone=no" name="format-detection">
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 1rem;
+            line-height: 1.6;
+        }
 
-    <!-- jquery -->
-    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
-    <script>
-        window.jQuery || document.write('\<script src="js/jquery-3.5.1.min.js"\>\<\/script\>')
-    </script>
+        .header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
 
+        .header h1 {
+            font-size: clamp(1.6rem, 5vw, 2.4rem);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.4rem;
+        }
+
+        .header h1 .name {
+            background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            color: var(--text-dim);
+            font-size: 0.95rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.25rem;
+            width: 100%;
+            max-width: 960px;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 1.75rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            text-decoration: none;
+            color: inherit;
+            transition: background 0.2s, border-color 0.2s, transform 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            border-radius: 14px 14px 0 0;
+            opacity: 0;
+            transition: opacity 0.25s;
+        }
+
+        .card:hover {
+            background: var(--surface-hover);
+            border-color: #3d4260;
+            transform: translateY(-3px);
+        }
+
+        .card:hover::before {
+            opacity: 1;
+        }
+
+        .card:nth-child(1)::before { background: linear-gradient(90deg, var(--accent-1), transparent); }
+        .card:nth-child(2)::before { background: linear-gradient(90deg, var(--accent-2), transparent); }
+        .card:nth-child(3)::before { background: linear-gradient(90deg, var(--accent-3), transparent); }
+
+        .card .icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            flex-shrink: 0;
+        }
+
+        .card:nth-child(1) .icon { background: rgba(245, 158, 11, 0.12); }
+        .card:nth-child(2) .icon { background: rgba(59, 130, 246, 0.12); }
+        .card:nth-child(3) .icon { background: rgba(16, 185, 129, 0.12); }
+
+        .card .icon svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .card:nth-child(1) .icon svg { color: var(--accent-1); }
+        .card:nth-child(2) .icon svg { color: var(--accent-2); }
+        .card:nth-child(3) .icon svg { color: var(--accent-3); }
+
+        .card h2 {
+            font-size: 1.15rem;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+        }
+
+        .card .desc {
+            color: var(--text-dim);
+            font-size: 0.88rem;
+            flex: 1;
+        }
+
+        .card .tag {
+            display: inline-block;
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            padding: 0.2em 0.6em;
+            border-radius: 4px;
+            width: fit-content;
+        }
+
+        .card:nth-child(1) .tag { background: rgba(245, 158, 11, 0.12); color: var(--accent-1); }
+        .card:nth-child(2) .tag { background: rgba(59, 130, 246, 0.12); color: var(--accent-2); }
+        .card:nth-child(3) .tag { background: rgba(16, 185, 129, 0.12); color: var(--accent-3); }
+
+        .card .cta {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.82rem;
+            font-weight: 500;
+            color: var(--text-dim);
+            transition: color 0.2s;
+        }
+
+        .card:hover .cta {
+            color: var(--text);
+        }
+
+        /* 建设中状态 */
+        .card.wip {
+            border-style: dashed;
+            border-color: var(--border);
+        }
+
+        .card.wip::after {
+            content: "建设中";
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            font-size: 0.68rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            color: var(--text-dim);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.15em 0.55em;
+        }
+
+        .card.wip .icon,
+        .card.wip h2,
+        .card.wip .desc,
+        .card.wip .tag {
+            opacity: 0.5;
+        }
+
+        .card.wip .cta {
+            opacity: 0.5;
+        }
+
+        .card.wip:hover {
+            background: var(--surface);
+            border-color: var(--border);
+            transform: none;
+        }
+
+        .card .cta svg {
+            width: 14px;
+            height: 14px;
+            transition: transform 0.2s;
+        }
+
+        .card:hover .cta svg {
+            transform: translateX(3px);
+        }
+
+        .footer {
+            margin-top: 3rem;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+            text-align: center;
+        }
+
+        .footer a {
+            color: var(--text-dim);
+            text-decoration: none;
+            border-bottom: 1px solid var(--border);
+            transition: color 0.2s, border-color 0.2s;
+        }
+
+        .footer a:hover {
+            color: var(--text);
+            border-color: var(--text);
+        }
+
+        /* 法语站点的相对路径链接修正 */
+        .card-fr h2::after {
+            content: "";
+        }
+
+        @media (max-width: 640px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
-
 <body>
-    <div class="main">
-        <h1>科波菲尔的个人站点</h1>
-        <p>正在建设中</p>
+    <div class="header">
+        <h1><span class="name">科波菲尔</span> 的个人站点</h1>
+        <p>闪击战 · 法语 · 工具</p>
     </div>
 
-</body>
+    <div class="grid">
+        <!-- 闪击战ID大百科 -->
+        <a class="card" href="./wotb-id/index.html">
+            <div class="icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                    <line x1="8" y1="21" x2="16" y2="21"/>
+                    <line x1="12" y1="17" x2="12" y2="21"/>
+                </svg>
+            </div>
+            <span class="tag">WOTB</span>
+            <h2>闪击战ID大百科</h2>
+            <p class="desc">帮助国服玩家刊载军团简介，支持按 ID、标签、名称搜索军团信息。</p>
+            <span class="cta">
+                进入
+                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/></svg>
+            </span>
+        </a>
 
+        <!-- 法语学习 -->
+        <a class="card wip" href="./learning-french/index.html">
+            <div class="icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+                </svg>
+            </div>
+            <span class="tag">法语</span>
+            <h2>我的法语小站</h2>
+            <p class="desc">记录法语学习心得，包含入门、进阶以及动词变位等内容。</p>
+            <span class="cta">
+                敬请期待
+                <svg viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5z"/><path d="M8 1.5A6.5 6.5 0 1 0 14.5 8 6.5 6.5 0 0 0 8 1.5z" fill-rule="evenodd" opacity="0.4"/></svg>
+            </span>
+        </a>
+
+        <!-- WOTB 日志提取器 -->
+        <a class="card wip" href="./wotb-log/get_info.html">
+            <div class="icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                </svg>
+            </div>
+            <span class="tag">WOTB</span>
+            <h2>日志信息提取器</h2>
+            <p class="desc">上传 WoTB 日志文件，自动提取并整理战斗数据摘要。</p>
+            <span class="cta">
+                敬请期待
+                <svg viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5z"/><path d="M8 1.5A6.5 6.5 0 1 0 14.5 8 6.5 6.5 0 0 0 8 1.5z" fill-rule="evenodd" opacity="0.4"/></svg>
+            </span>
+        </a>
+    </div>
+
+    <div class="footer">
+        <p>© 2026 科波菲尔 · <a href="https://github.com/David-C0pperfield" target="_blank">GitHub</a></p>
+    </div>
+</body>
 </html>
