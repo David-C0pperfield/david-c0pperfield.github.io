@@ -1,551 +1,750 @@
-$(function() {
-    var clanData,
-        beginIndex = 0,
-        stepLength = 20,
-        endingIndex = beginIndex + stepLength - 1,
-        dataIndex = beginIndex,
-        overflowIndex = 0,
-        overflowStep = 0,
-        fileExtList = {
-            1: 'png',
-            2: 'jpg',
-            3: 'jpg'
-        },
-        rLogo = [];
-    for (let i = 0; i <= 24; i++) rLogo.push(10000 + i)
-    for (let i = 2; i <= 26; i++) rLogo.push(20000 + i)
+/*!
+    * 闪击战ID大百科
+ */
+(function () {
+    'use strict';
 
-    $('meta[itemprop="image"]').attr('content', window.location.protocol + '//' + window.location.host + '/favicon.ico')
+    /* ===================== 配置 ===================== */
+    var STEP_LENGTH = 20;                              // 每页条数
+    var FILE_EXT = { 1: 'png', 2: 'jpg', 3: 'jpg' };   // Logo/Imgs 里存的是扩展名编号
+    var SITE_TITLE = '闪击战ID大百科';
+    var SITE_DESC = '本网页旨在帮助国服玩家刊载军团简介。有意见或建议请加Q群：715200589';
+    var DATA_URL = 'js/clan.json';
+    var RECORD_URL = 'https://clanarc.com/clanLookup/recordLookup';
+    var RECOMMEND_COUNT = 5;
 
-    $.ajaxSetup({ async: false })
-    $.ajax({
-        url: "./js/clan.json",
-        dataType: "json",
-        error: function() { console.log('数据获取失败') },
-        success: function(data) { clanData = data }
-    })
+    /* ===================== 状态 ===================== */
+    var clanData = [];        // 全量军团数据
+    var recommendPool = [];   // 推荐候选池
+    var beginIndex = 0;       // 当前页第一条
+    var endingIndex = STEP_LENGTH - 1;
+    var dataIndex = 0;
+    var rLogo = [];           // 占位徽章编号池
+    var scrollFlag = false;   // 触摸手势：防止滚动时误关闭浮层
+    var backBtn = null;
+    var currentCid = null;    // 当前详情展示的军团 ID
 
-    $(document).ready(function() {
+    /* ===================== DOM 缓存 ===================== */
+    var el = {
+        searchInput: document.getElementById('searchstr'),
+        searchBtn: document.getElementById('search_btn'),
+        resetBtn: document.querySelector('.btn.resetBtn'),
+        announcement: document.getElementById('announcement_zone'),
+        titleBanner: document.getElementById('title-banner'),
+        titleText: document.querySelector('#title-banner .title'),
+        table: document.querySelector('table.clan_lib'),
+        tbody: document.querySelector('table.clan_lib tbody'),
+        recommend: document.getElementById('recommend'),
+        detail: document.getElementById('detail'),
+        detailInner: document.querySelector('#detail .inner'),
+        detailWindow: document.querySelector('#detail .window'),
+        detailContent: document.querySelector('#detail .content')
+    };
 
-        console.log('loaded')
-        calcTableHeight();
-        getClanData('byId', getQueryStr('cid'));
+    /* ===================== 基础工具 ===================== */
+    function $(sel, root) { return (root || document).querySelector(sel); }
+    function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+    function on(target, type, handler, opts) { if (target) target.addEventListener(type, handler, opts); }
+    function has(obj, key) { return Object.prototype.hasOwnProperty.call(obj, key); }
+    function showInline(node) { if (node) node.style.display = 'inline-block'; }
+    function showBlock(node) { if (node) node.style.display = 'block'; }
+    function hideEl(node) { if (node) node.style.display = 'none'; }
 
-        if (getQueryStr('keyword')) {
-            $('#searchstr').val(getQueryStr('keyword'))
-            startSearching()
-        }
-        //Detect the strings in the search box.
-        if (!$(this).val()) $('.btn.resetBtn>*').hide()
-        else $('.btn.resetBtn>*').show()
-
-    })
-
-    $(window).resize(function() { calcTableHeight(); })
-
-    $(document).on('click', '.flipBtn.back', function() {
-        dataIndex = beginIndex
-            // $('.flipBtn').show()
-        $('.flipBtn.back').hide()
-        window.history.replaceState({ Page: 1 }, '', './')
-            // fetchData()
-        $('table.clan_lib').css('display', 'none')
-        $('#recommend').css('display', 'block')
-        showRecommend()
-    })
-    $('.flipBtn.next').on('click', function() {
-        beginIndex += stepLength
-        endingIndex += stepLength
-        dataIndex = beginIndex
-        fetchData()
-    })
-    $('.flipBtn.prev').on('click', function() {
-        beginIndex += -stepLength
-        endingIndex += -stepLength
-        dataIndex = beginIndex
-        fetchData()
-    })
-
-    function fetchData() {
-        restorePosition()
-        if (!clanData) return false;
-        var total_entries = clanData.length;
-        changeTitle('收录', total_entries);
-        (function judgePage() {
-            if (beginIndex <= 0) { $('.flipBtn.prev').hide() } else $('.flipBtn.prev').show()
-            if (endingIndex >= total_entries - 1) { $('.flipBtn.next').hide() } else $('.flipBtn.next').show()
-        })();
-        (function loadList() {
-            $('#content tbody').empty()
-            if (beginIndex < 0) { //index为负数时
-                beginIndex = 0
-                endingIndex = beginIndex + stepLength - 1
-
-            }
-            if (endingIndex > total_entries - 1) { //超出的处理
-                overflowIndex = endingIndex
-                endingIndex = total_entries - 1
-                overflowStep = overflowIndex - endingIndex
-
-            }
-            if (overflowStep != 0) { //补回溢出的读取长度
-                endingIndex += overflowStep
-                overflowStep = 0
-            }
-            while (dataIndex >= beginIndex && dataIndex <= endingIndex) {
-                insertData(clanData, dataIndex, 'table')
-                if (dataIndex < total_entries - 1) dataIndex++;
-                else return
-            }
-        })();
-    }
-
-    $(document).on('keydown', function(e) {
-        var keyFind = e.which
-        if ((e.ctrlKey || e.metaKey) && keyFind == 70) {
-            e.preventDefault();
-            $('#searchstr').focus();
-            $('#searchstr').select()
-            restoreDetailWindow()
-        }
-    })
-    $('#search_btn').on('click', function() {
-        if (!$('#searchstr').val()) return
-        startSearching()
-    })
-    $('#searchstr').on('focus keyup', function() {
-        if (!$(this).val()) $('.btn.resetBtn>*').hide()
-        else $('.btn.resetBtn>*').show()
-    });
-    $('.btn.resetBtn>*').on('click', function() {
-        removeInput('#searchstr');
-        $('#searchstr').focus();
-    })
-
-    function slideDownAnnouncement() { setTimeout(function() { $('#announcement_zone').slideDown(250); }, 450) }
-    $('#searchstr').on('click focus', function() { //聚焦时显示横幅
-        $('#announcement_zone').slideDown(250)
-        this.select()
-    })
-    $('#searchstr').on('keydown', function(e) { //检测回车
-        var key = e.which;
-        if (key == 13) startSearching();
-    })
-    $(document).on('click', function(e) { //单击收回横幅
-        var target = $(e.target)
-        if (!target.is('#searchstr') && !target.is('#announcement_zone .wrap') && !target.is('#announcement_zone .wrap *') || target.is('#announcement_zone .toCollapse') || target.is('#announcement_zone .toCollapse *')) {
-            slideUpAnnouncement()
-        }
-    })
-
-    /* ------ 详情浮层 ------ */
-    $(document).on('click', '#content tbody tr[data-clan-id],.clan-card[data-clan-id]', function() { //点击条目，显示浮层
-        let cid = $(this).attr('data-clan-id');
-        window.history.pushState({ Page: 3 }, '', '?cid=' + cid)
-        getClanData('byId', getQueryStr('cid'));
-        showDetail()
-    })
-    $(document).on('mousedown', '#content tbody tr[data-clan-id]', function(e) {
-        if (e.which != 1) return
-        $(this).css({ 'background-color': 'rgba(70, 94, 109, 0.5)' })
-    })
-    $(document).on('mouseup', '#content tbody tr[data-clan-id]', function() {
-        $(this).removeAttr('style')
-    })
-    $(document).on('click', '#detail .clanFamily [data-clan-id]', function() { //点击相关军团，切换显示
-        let cid = $(this).attr('data-clan-id');
-        window.history.pushState({ Page: 4 }, '', '?cid=' + cid)
-        $('#detail .content').fadeOut(250)
-        setTimeout(function() {
-            $('#detail .content>*').remove();
-            getClanData('byId', getQueryStr('cid'));
-        }, 200)
-        showDetail()
-        $('#detail .content').fadeIn(350)
-    })
-
-    $('#detail').on('click keydown', function(e) { //关闭浮层
-        let target = $(e.target)
-        if (!target.is('#detail .inner *') || target.is('#detail .dismissBtn *')) restoreDetailWindow()
-    })
-
-    // Dropdown Gestures
-    var beginDrag_y,
-        drag_distance = 0,
-        element_ceil_position,
-        element_ceil_position_end,
-        element_move_distance,
-        scroll_flag = false; //to improve the scroll experience, use the scroll flag to prevent dismissing the detail layer.
-    $('#detail .content').on('touchstart', function(e) {
-        beginDrag_y = e.touches[0].pageY
-
-    })
-    $('#detail .content').on('touchmove', function(e) {
-        page_y = e.touches[0].pageY
-        drag_distance = page_y - beginDrag_y
-        if (element_ceil_position == 32 && !scroll_flag) {
-            $("#detail .window").css({ "transform": "translateY(" + (0.1875 * drag_distance) + "px)" })
-        }
-    })
-
-    $('#detail .content').on('touchend', function(e) {
-        element_ceil_position = $(this).position().top
-        if (element_ceil_position == 32) {
-            scroll_flag = false
-        }
-        console.log(drag_distance)
-        if (drag_distance < -1 / 5 * $("#detail .wrap .inner .window").height()) { scroll_flag = true }
-        if (drag_distance > 128 && element_ceil_position == 32 && !scroll_flag) {
-            restoreDetailWindow()
-                // beginDrag_y = 0
-            drag_distance = 0
-
-        } else $("#detail .window").css({ "transform": "translateY(" + 0 + "px)" })
-    })
-
-    function restoreDetailWindow() {
-        window.history.replaceState({ Page: 1 }, '', './')
-        $('#detail .inner').animate({ 'height': '0' }, { queue: false, duration: 500 })
-        $('#detail').fadeOut(600, function() {
-            $('#detail .content').empty()
-            $("#detail .window").css({ "transform": "translateY(" + 0 + "px)" })
+    /* HTML 转义：修复原版直接拼接用户可控文本导致的 XSS 面 */
+    function escapeHTML(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
         });
-
-        document.title = '闪击战ID大百科'
-        $('meta[itemprop="name"').attr('content', '闪击战ID大百科')
-        $('meta[name="description"],meta[itemprop="description"]').attr('content', '本网页旨在帮助国服玩家刊载军团简介。有意见或建议请加Q群：715200589')
-        $('meta[itemprop="image"]').attr('content', window.location.protocol + '//' + window.location.host + '/favicon.ico')
     }
 
-    function startSearching() {
-        if ($('#searchstr').val()) window.history.pushState({ Page: 2 }, '', '?keyword=' + $('#searchstr').val());
-        else {
-            alert("您还没有输入关键词！")
-            return
+    /* 正则元字符转义（字符顺序特意调整过，等价于 [.*+?^$(){}|[\]\\]） */
+    function escapeRegExp(value) {
+        return String(value == null ? '' : value).replace(/[.*+?^{}()|[\]\\$]/g, '\\$&');
+    }
+
+    /* 等价于 jQuery 的 outerHeight()（含 padding + border，不含 margin） */
+    function outerHeight(node) {
+        return node ? node.getBoundingClientRect().height : 0;
+    }
+
+    function absoluteURL(path) {
+        try { return new URL(path, window.location.href).href; } catch (e) { return path; }
+    }
+
+    /* ===================== 动画（Web Animations API 替代 jQuery 动画） ===================== */
+    function animate(node, frames, options) {
+        if (!node || typeof node.animate !== 'function') return null;
+        return node.animate(frames, options);
+    }
+
+    /* 下拉展开（替代 slideDown） */
+    function slideOpen(node, duration) {
+        if (!node) return;
+        node.style.display = 'block';
+        var height = node.offsetHeight;
+        if (!height) return;
+        animate(node, [{ height: '0px' }, { height: height + 'px' }], { duration: duration, easing: 'ease' });
+    }
+
+    /* 上滑收起（替代 slideUp） */
+    function slideClose(node, duration) {
+        if (!node) return;
+        var height = node.offsetHeight;
+        if (!height || node.style.display === 'none') return;
+        var anim = animate(node, [{ height: height + 'px' }, { height: '0px' }], { duration: duration, easing: 'ease', fill: 'forwards' });
+        if (!anim) { node.style.display = 'none'; return; }
+        anim.onfinish = function () { anim.cancel(); node.style.display = 'none'; };
+    }
+
+    /* 淡入（替代 fadeIn） */
+    function fadeIn(node, duration) {
+        if (!node) return;
+        node.style.display = 'block';
+        animate(node, [{ opacity: 0 }, { opacity: 1 }], { duration: duration, easing: 'ease' });
+    }
+
+    /* 淡出（替代 fadeOut） */
+    function fadeOut(node, duration, done) {
+        if (!node) { if (done) done(); return; }
+        node.style.display = 'block';
+        var anim = animate(node, [{ opacity: 1 }, { opacity: 0 }], { duration: duration, easing: 'ease', fill: 'forwards' });
+        if (!anim) { node.style.display = 'none'; if (done) done(); return; }
+        anim.onfinish = function () { anim.cancel(); node.style.display = 'none'; if (done) done(); };
+    }
+
+    /* 浮层展开（替代 animate({height:'100%'})） */
+    function expandDetailInner() {
+        if (!el.detailInner) return;
+        var target = el.detailInner.parentNode.clientHeight;
+        el.detailInner.style.height = target + 'px';
+        animate(el.detailInner, [{ height: '0px' }, { height: target + 'px' }], { duration: 450, easing: 'ease-out' });
+    }
+
+    /* 浮层收起 */
+    function collapseDetailInner(done) {
+        if (!el.detailInner) { if (done) done(); return; }
+        var height = el.detailInner.offsetHeight;
+        var anim = animate(el.detailInner, [{ height: height + 'px' }, { height: '0px' }], { duration: 500, easing: 'ease', fill: 'forwards' });
+        if (!anim) { el.detailInner.style.height = '0px'; if (done) done(); return; }
+        anim.onfinish = function () { anim.cancel(); el.detailInner.style.height = '0px'; if (done) done(); };
+    }
+
+    /* ===================== URL 参数 ===================== */
+    function getQueryStr(name) {
+        var value = new URLSearchParams(window.location.search).get(name);
+        if (!value) return undefined;
+        return value;
+    }
+
+    /* ===================== 数据 ===================== */
+    function loadData() {
+        return fetch(DATA_URL, { credentials: 'same-origin' })
+            .then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            })
+            .then(function (data) {
+                clanData = Array.isArray(data) ? data : [];
+                return clanData;
+            })
+            .catch(function (err) {
+                clanData = [];
+                if (el.tbody) el.tbody.innerHTML = '<tr><td>数据加载失败，请刷新重试</td></tr>';
+                if (el.recommend) el.recommend.innerHTML = '<p>数据加载失败，请刷新重试</p>';
+                console.error('[main.js] 军团数据加载失败：', err);
+                return clanData;
+            });
+    }
+
+    /* ===================== 检索 ===================== */
+    /**
+     * @param {*} keyword 关键词
+     * @param {Array} list 数据源
+     * @param {'id'|'mid'|'analysis'|undefined} mode
+     */
+    function toCompare(keyword, list, mode) {
+        if (!Array.isArray(list)) return [];
+        var kw = keyword == null ? '' : String(keyword);
+        var result = [];
+        var i, item;
+
+        if (mode === 'id' || mode === 'mid') {
+            var field = (mode === 'id') ? 'ID' : 'MID';
+            var strict = new RegExp('^' + escapeRegExp(kw) + '$');
+            for (i = 0; i < list.length; i++) {
+                item = list[i];
+                if (has(item, field) && strict.test(String(item[field]))) result.push(item);
+            }
+            return result;
         }
-        $('#recommend').css('display', 'none')
-        $('table.clan_lib').css('display', 'block')
-        restorePosition()
-        getClanData()
-    }
 
-    function slideUpAnnouncement() { if ($('#announcement_zone').css('display') != 'none') $('#announcement_zone').slideUp(250); }
-
-    function getClanData(mode, id) {
-        if (!mode) {
-            var keyword = getQueryStr('keyword');
-            if (!keyword) return
-            $('#content tbody').empty()
-            let result = toCompare(keyword, clanData),
-                resultCount = result.length
-            if (resultCount == 0) insertData()
-            changeTitle('搜索到', resultCount);
-            for (let i in result) insertData(result, i, 'table')
-            let backIcon = '<svg width="1em" height="1em" viewBox="0 0 16 16" class="bi bi-chevron-left" fill="currentColor" xmlns="http://www.w3.org/2000/svg">' +
-                '<path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/></svg>'
-            slideUpAnnouncement()
-            $('.flipBtn').hide()
-            $('#title-banner').prepend('<span class="btn flipBtn back">' + backIcon + '返回</span>');
-            $('.flipBtn.back').show()
-        } else if (mode.match(/byID/gi)) {
-            var id = String(id),
-                detail
-            if ((id == 0 || id % 1 != 0) && !id.match(/隐藏/g)) return
-            detail = toCompare(id, clanData, 'id')
-
-            let len = detail.length;
-            if (len == 0) return
-            insertData(detail, 0, 'detail')
-            document.title = '[' + detail[0].Tag + '] ' + detail[0].Full + '——闪击战ID百科'
-            $('meta[itemprop="name"]').attr('content', '[' + detail[0].Tag + '] ' + detail[0].Full + '——闪击战ID百科')
-            if (detail[0].Desc) {
-                $('meta[name="description"],meta[itemprop="description"]').attr('content', detail[0].Desc)
-            } else { $('meta[name="description"],meta[itemprop="description"]').attr('content', '本网页旨在帮助国服玩家刊载军团简介。有意见或建议请加Q群：715200589') }
-            showDetail()
-        }
-
-    }
-
-    function getClanFamily(i) {
-        var parentClan = i,
-            result = toCompare(parentClan, clanData, 'mid'),
-            family_branch = [];
-        //resultCount = result.length
-        //if (resultCount > 0) var clan_result_count = ''.concat('该军团有', (resultCount - 1), '个分团')
-        $('#detail .content').append('<div class="clanFamily"><h3>相关军团</h3></div>')
-        for (let i in result) { //寻找深层次军团族
-            family_branch[i] = (toCompare(result[i].ID, clanData, 'mid')[0])
-            if (family_branch[i]) {
-                if (family_branch[i].ID == family_branch[i].MID) {
-                    family_branch[i] = toCompare(-result[i].ID, clanData, 'mid')[0]
+        if (mode === 'analysis') {   // 筛选“适合上推荐位”的军团
+            for (i = 0; i < list.length; i++) {
+                item = list[i];
+                var desc = String(item.Desc == null ? '' : item.Desc);
+                if (desc.indexOf('/repeat') !== -1) {
+                    var rep = resolveRepeat(item.MID, desc);
+                    if (rep) desc = rep.Desc;
+                }
+                if (desc.length > 10 && !/^编者/.test(desc) && desc.indexOf('幽灵团') === -1 && /\d/.test(desc)) {
+                    result.push(item);
                 }
             }
+            return result;
         }
-        // for (let i in family_branch) { if (!family_branch[i]) family_branch[i] = null }
-        // family_branch.splice(0, 1)
-        // console.log(result)
-        // console.log(family_branch)
-        for (let i in result) insertData(result, i, 'mid', family_branch[i])
+
+        /* 默认：标签/全名 包含关键词，或 ID 包含关键词（不区分大小写） */
+        if (!kw) return [];
+        var loose = new RegExp(escapeRegExp(kw), 'i');
+        for (i = 0; i < list.length; i++) {
+            item = list[i];
+            if (loose.test(String(item.Tag)) || loose.test(String(item.Full)) || loose.test(String(item.ID))) {
+                result.push(item);
+            }
+        }
+        return result;
     }
 
-    var filter = ["[", "]", "{", "}", "(", ")", "+", "*", "/"],
-        filterWords = ["编者", '幽灵团', "孤儿"],
-        blacklist = []
-    for (let i in filterWords) blacklist.push(new RegExp(filterWords[i], "g"))
-    for (let i = 0; i < filter.length; i++) filter[i] = '\\' + filter[i]
-
-    function toCompare(keyword, data, mode) {
-        switch (keyword) {
-            case !keyword:
-                break;
-            default:
-                if (isNaN(Number(keyword))) {
-                    for (let i in keyword) {
-                        for (let j in filter) {
-                            filtSpecial = new RegExp(filter[j], 'g')
-                            keyword = keyword.replace(filtSpecial, filter[j])
-                        }
-                    }
-                }
-                var strictReg = new RegExp('^' + keyword + '$')
-                break;
-        }
-        if (!(data instanceof Array)) return
-        var len = data.length,
-            arr = [],
-            reg = new RegExp(keyword, 'i');
-        switch (mode) {
-            case 'id':
-                for (let i = 0; i < len; i++) {
-                    if (String(data[i].ID).match(strictReg)) arr.push(data[i])
-                }
-                break;
-            case 'mid':
-                for (let i = 0; i < len; i++) {
-                    if (String(data[i].MID).match(strictReg)) arr.push(data[i])
-                }
-                break;
-            case 'analysis':
-                let z = 0;
-                for (let i = 0; i < len; i++) {
-                    var tempDesc = String(data[i].Desc)
-                    if (tempDesc.match(/\/repeat/g)) {
-                        tempDesc = toRepeat(data[i].MID, tempDesc)
-                    }
-                    if (tempDesc.length > 10 &&
-                        !tempDesc.match(/^编者/g) &&
-                        !tempDesc.match(/幽灵团/g) &&
-                        tempDesc.match(/\d/g)) {
-                        arr.push(data[i])
-                        z++
-                    }
-                }
-                // console.log(z)
-                break;
-            default:
-                for (let i = 0; i < len; i++) {
-                    if (String(data[i].Tag).match(reg) || String(data[i].Full).match(reg) || String(data[i].ID).match(strictReg || reg)) arr.push(data[i])
-                }
-                break;
-        }
-        return arr
+    /**
+     * 解析简介中的自定义指令 /repeat 或 /repeat(军团ID)
+     * @returns {{Desc: string}|null}
+     */
+    function resolveRepeat(mid, desc) {
+        var source = String(desc == null ? '' : desc);
+        var re = /\/repeat(?:\(([^)]*)\))?/;
+        var matched = source.match(re);
+        if (!matched) return null;
+        var targetId = (matched[1] && matched[1].trim()) ? matched[1].trim() : mid;
+        if (targetId == null || targetId === '') return null;
+        var hit = toCompare(targetId, clanData, 'id')[0];
+        if (!hit || !has(hit, 'Desc')) return null;   // FIX: 原版此处未判空，/repeat 指向不存在 ID 会整页崩
+        return { Desc: source.replace(re, String(hit.Desc)) };
     }
 
-    function changeTitle(action, number) {
-        if (!number) { $('#title-banner .title').html(action) } else { $('#title-banner .title').html("共" + action + number + "个军团"); }
+    /* 军团建立日期：Data 里存的是“距 1900-01-01 的天数” */
+    function processDate(serial) {
+        var date = new Date(1900, 0, 1);
+        date.setDate(Number(serial) - 1);
+        return [date.getFullYear(), date.getMonth() + 1, date.getDate()].join('-');
     }
-    var repeated_desc;
 
-    function insertData(d, i, method, family_branch) {
-        if (!d) {
-            $('#content tbody').append('<tr><td>未搜索到相关内容，相关军团可能未被收录</td></tr>')
-            return
+    /* ===================== 渲染 ===================== */
+    function changeTitle(action, count) {
+        if (!el.titleText) return;
+        el.titleText.innerHTML = (typeof count === 'number')
+            ? ('共' + action + count + '个军团')
+            : action;
+    }
+
+    function insertData(list, index, method) {
+        if (!list || !list.length) {
+            if (method === 'table' && el.tbody) {
+                el.tbody.insertAdjacentHTML('beforeend', '<tr><td>未搜索到相关内容，相关军团可能尚未收录</td></tr>');
+            }
+            return;
         }
-        i = i || 0
-        var ID = d[i].ID,
-            Tag = '[' + d[i].Tag + ']',
-            Full = d[i].Full,
-            tableID;
-        if (d[i].hasOwnProperty('Desc')) { var desc = d[i].Desc } else desc = '无'
-        if (d[i].hasOwnProperty('MID')) var MID = d[i].MID
-        if (d[i].hasOwnProperty('Logo')) var logoExt = d[i].Logo
+        var i = index || 0;
+        var clan = list[i];
+        if (!clan) return;
 
-        let insertHTML;
+        var ID = clan.ID;
+        var tag = '[' + clan.Tag + ']';
+        var full = clan.Full;
+        var desc = has(clan, 'Desc') ? String(clan.Desc) : '无';
+        var rep = resolveRepeat(clan.MID, desc);
+        if (rep) desc = rep.Desc;
+
         switch (method) {
-            case 'table':
-                var reDesc = toRepeat(MID, desc) //检测重复指令
-                if (reDesc) desc = reDesc.Desc
-                if (desc.length > 20) desc = desc.substr(0, 19) + '…'
-                else tableID = ID
-                insertHTML = '<tr data-clan-id=' + ID + '><td>' + ID +
-                    '</td><td class="orange">' + Tag + ' ' + Full +
-                    '</td><td>' + desc + '</td></tr>'
-                $('#content tbody').append(insertHTML) //插入页面
+            /* ---------- 列表行 ---------- */
+            case 'table': {
+                var shortDesc = desc.length > 20 ? desc.substr(0, 19) + '…' : desc;
+                el.tbody.insertAdjacentHTML('beforeend',
+                    '<tr data-clan-id="' + escapeHTML(ID) + '">' +
+                    '<td>' + escapeHTML(ID) + '</td>' +
+                    '<td class="orange">' + escapeHTML(tag + ' ' + full) + '</td>' +
+                    '<td>' + escapeHTML(shortDesc) + '</td>' +
+                    '</tr>');
                 break;
+            }
 
-            case 'detail':
-                var logoURL = '',
-                    imgDisplay = ''
-                if (d[i].hasOwnProperty('Imgs')) var imgList = d[i].Imgs
-                if (logoExt) {
-                    logoURL = 'img/clan/' + ID + '/0.' + fileExtList[logoExt]
+            /* ---------- 详情浮层 ---------- */
+            case 'detail': {
+                var logoURL;
+                if (clan.Logo && FILE_EXT[clan.Logo]) {
+                    logoURL = 'img/clan/' + ID + '/0.' + FILE_EXT[clan.Logo];
                 } else {
-                    let LogoID = parseInt(Math.random() * rLogo.length)
-                    logoURL = 'img/icons/clanEmblems2x/clan-icon-v2-' + rLogo[LogoID] + '.png'
+                    logoURL = 'img/icons/clanEmblems2x/clan-icon-v2-' + rLogo[Math.floor(Math.random() * rLogo.length)] + '.png';
                 }
-                $('meta[itemprop="image"]').attr('content', window.location.protocol + '//' + window.location.host + '/' + logoURL)
-                if (d[i].Date) var estbl = processDate(d[i].Date);
-                else estbl = '--' //军团建立日期
+                setMetaImage(logoURL);
 
-                if (imgList) {
-                    imgDisplay = '<div class="clan-img"><div class = "container">'
-                    for (let i = 0; i < imgList.length; i++) {
-                        imgDisplay += '<li><img src="./img/clan/' + ID + '/' + (i + 1) + '.' + fileExtList[imgList[i]] + '">' + '</li>'
+                var estbl = clan.Date ? processDate(clan.Date) : '--';
+
+                var imgsHTML = '';
+                if (Array.isArray(clan.Imgs) && clan.Imgs.length) {
+                    imgsHTML = '<div class="clan-img"><div class="container">';
+                    for (var n = 0; n < clan.Imgs.length; n++) {
+                        if (!FILE_EXT[clan.Imgs[n]]) continue;
+                        imgsHTML += '<li><img src="./img/clan/' + ID + '/' + (n + 1) + '.' + FILE_EXT[clan.Imgs[n]] + '"></li>';
                     }
-                    imgDisplay += '</div></div>'
-                        // $('#detail .content').append(imgDisplay)
+                    imgsHTML += '</div></div>';
                 }
-                var reDesc = toRepeat(MID, desc) //检测重复指令
-                if (reDesc) desc = reDesc.Desc
-                desc = desc.replace(/\n/g, '</p><p>')
-                var clanBrief = '<div class="clanInfo"><div class="logo">' +
-                    ' <img src="' + logoURL + '" alt="' + Tag + Full + 'Logo"></div>' +
-                    '<div class="info"><p class="orange">' + Tag + ' ' + Full + '</p>' +
-                    '<p>ID：' + ID + '</p>' +
-                    '<p>创建日期：' + estbl + '</p></div></div>',
-                    clanIntro = '<div class="introduction"><h3>简介</h3>' +
-                    '<p>' + desc + '</p></div>';
 
-                insertHTML = clanBrief + imgDisplay + clanIntro
-                $('#detail .content').append(insertHTML) //插入页面
-                if (MID) {
-                    if (MID < 0) MID = -MID
-                    getClanFamily(MID)
-                } //检测是否有主团
-                repeated_desc = '' //清空变量
-                break;
+                var briefHTML = '<div class="clanInfo">' +
+                    '<div class="logo"><img src="' + logoURL + '" alt="' + escapeHTML(tag + full) + 'Logo"></div>' +
+                    '<div class="info">' +
+                    '<p class="orange">' + escapeHTML(tag + ' ' + full) + '</p>' +
+                    '<p>ID：' + escapeHTML(ID) + '</p>' +
+                    '<p>创建日期：' + escapeHTML(estbl) + '</p>' +
+                    '</div></div>';
 
-            case 'mid': // 注入军团族群表
-                let beginMark = '<div><div data-clan-id="' + ID + '">';
-                var clan_cell = '<span class="orange">' + Tag + ' ' + Full + '</span>' +
-                    '<span class="idNumber">ID：' + ID + '</span>';
-                // if (family_branch) {}
-                let endMark = '</div></div>'
-                if (ID == getQueryStr('cid')) beginMark = '<div data-clan-id="' + ID + '"class ="current">'
-                insertHTML = [beginMark, clan_cell, endMark].join('')
-                $('#detail .clanFamily').append(insertHTML)
+                var introHTML = '<div class="introduction"><h3>简介</h3><p>' +
+                    escapeHTML(desc).replace(/\n/g, '</p><p>') +
+                    '</p></div>';
+
+                el.detailContent.insertAdjacentHTML('beforeend', briefHTML + imgsHTML + introHTML);
+
+                if (clan.MID != null) renderFamily(Math.abs(Number(clan.MID)));
                 break;
+            }
+
+            /* ---------- 相关军团小格 ---------- */
+            case 'mid': {
+                var cls = (String(ID) === String(currentCid)) ? ' class="current"' : '';
+                el.detailContent.querySelector('.clanFamily').insertAdjacentHTML('beforeend',
+                    '<div><div data-clan-id="' + escapeHTML(ID) + '"' + cls + '>' +
+                    '<span class="orange">' + escapeHTML(tag + ' ' + full) + '</span>' +
+                    '<span class="idNumber">ID：' + escapeHTML(ID) + '</span>' +
+                    '</div></div>');
+                break;
+            }
         }
-        return
     }
 
-    function removeInput(t) { $(t).val('') }
+    /* 渲染“相关军团”（军团族） */
+    function renderFamily(mid) {
+        el.detailContent.insertAdjacentHTML('beforeend', '<div class="clanFamily"><h3>相关军团</h3></div>');
+        var family = toCompare(mid, clanData, 'mid');
+        for (var i = 0; i < family.length; i++) insertData(family, i, 'mid');
+    }
+
+    /* ===================== SEO / meta ===================== */
+    function setMetaImage(path) {
+        var node = document.querySelector('meta[itemprop="image"]');
+        if (node) node.setAttribute('content', absoluteURL(path));
+    }
+    function setMetaName(value) {
+        var node = document.querySelector('meta[itemprop="name"]');
+        if (node) node.setAttribute('content', value);
+    }
+    function setMetaDescription(value) {
+        $$('meta[name="description"], meta[itemprop="description"]').forEach(function (node) {
+            node.setAttribute('content', value);
+        });
+    }
+    function applyDetailMeta(clan) {
+        var title = '[' + clan.Tag + '] ' + clan.Full + '——闪击战ID百科';
+        document.title = title;
+        setMetaName(title);
+        setMetaDescription(clan.Desc ? String(clan.Desc) : SITE_DESC);
+    }
+    function restoreMeta() {
+        document.title = SITE_TITLE;
+        setMetaName(SITE_TITLE);
+        setMetaDescription(SITE_DESC);
+        setMetaImage('favicon.ico');
+    }
+
+    /* ===================== 视图切换 ===================== */
+    function isDetailOpen() {
+        return el.detail ? window.getComputedStyle(el.detail).display !== 'none' : false;
+    }
+
+    function updateResetBtn() {
+        var empty = !el.searchInput || el.searchInput.value === '';
+        $$('.btn.resetBtn > *').forEach(function (node) {
+            node.style.display = empty ? 'none' : '';
+        });
+    }
 
     function calcTableHeight() {
-        tablePosition = $(window).height() - $('table thead').outerHeight() - $('#content #title-banner').outerHeight() - $('#head').outerHeight()
-        $('table tbody').css({ 'height': tablePosition + 'px' })
-        return tablePosition;
-    }
-    // 军团单独页面
-    function getQueryStr(n) {
-        let reg = new RegExp('(^|&)' + n + '=([^&]*)(&|$)'),
-            result = window.location.search.substr(1).match(reg);
-        if (!result) return
-        let decodeR = decodeURIComponent(result[2]);
-        if (!decodeR) return
-        if (result != null) return decodeR
-        return null
+        var height = window.innerHeight
+            - outerHeight($('table.clan_lib thead'))
+            - outerHeight(el.titleBanner)
+            - outerHeight(document.getElementById('head'));
+        if (el.tbody) el.tbody.style.height = Math.max(height, 0) + 'px';
+        return height;
     }
 
     function restorePosition() {
-        $('table tbody').animate({ scrollTop: 0 }, { queue: false, duration: 500 })
+        if (!el.tbody) return;
+        if (typeof el.tbody.scrollTo === 'function') el.tbody.scrollTo({ top: 0, behavior: 'smooth' });
+        else el.tbody.scrollTop = 0;
     }
 
-    function showDetail() {
-        $('#detail .inner').animate({ 'height': '100%' }, { queue: false, duration: 450 });
-        $('#detail').fadeIn(400)
-        scroll_flag = false
+    function ensureBackButton() {
+        if (backBtn && backBtn.parentNode) return backBtn;
+        backBtn = document.createElement('span');
+        backBtn.className = 'btn flipBtn back';
+        backBtn.innerHTML = '<svg width="1em" height="1em" viewBox="0 0 16 16" class="bi bi-chevron-left" fill="currentColor" xmlns="http://www.w3.org/2000/svg">' +
+            '<path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/></svg>' +
+            '<span>返回</span>';
+        el.titleBanner.insertBefore(backBtn, el.titleBanner.firstChild);
+        backBtn.addEventListener('click', function () { backToRecommend(true); });
+        return backBtn;
     }
 
-    function processDate(rd) { //处理日期
-        let rDate = rd; //源日期
-        date = new Date();
-        date.setFullYear(1900), date.setMonth(0), date.setDate(rDate - 1) //设置日期
-        let processedDate = [date.getFullYear(), Number(date.getMonth() + 1), date.getDate()], //标准化日期
-            result = processedDate.join('-') //连字符样式
-        return result
-    }
-
-    function toRepeat(MID, Desc) {
-        var descOut, iconOut, picOut, output,
-            re_reg = /\/repeat(\(([^)]*)\))?/
-
-        if (Desc.match(re_reg)) {
-            if (Desc.match(re_reg)[2]) MID = Desc.match(re_reg)[2]
-            var temp = toCompare(MID, clanData, 'id')
-            if (temp[0].hasOwnProperty('Desc')) {
-                descOut = Desc.replace(re_reg, temp[0].Desc)
-            }
-        } else return null
-        return output = { 'Icon': iconOut, 'Desc': descOut, 'Pic': picOut }
-    }
-
-
-
-    var indexList = new Array(),
-        recommendList = toCompare(undefined, clanData, 'analysis')
-        // showRecomend()
-
-    function randomNum() {
-        var rand = parseInt(Math.random() * recommendList.length);
-        return rand
-    }
-
-    function showRecommend() {
-        var clan, ID, tag, fname, Desc, rand, logo, date, logoURL, family_list = []
-        $('#recommend').empty()
-        changeTitle('军团推荐')
-        do {
-            rand = randomNum()
-            if ($.inArray(rand, indexList) == -1) {
-                if (!recommendList[rand].hasOwnProperty('MID') || $.inArray(recommendList[rand].MID, family_list) == -1) {
-                    indexList.push(rand)
-                    family_list.push(recommendList[rand].MID)
-                }
-            }
-        } while (indexList.length < 5)
-        for (let i in indexList) {
-            logo = null
-            clan = recommendList[indexList[i]]
-            ID = clan.ID
-            tag = '[' + clan.Tag + ']'
-            fname = clan.Full
-            desc = clan.Desc
-            if (clan.hasOwnProperty('MID')) var MID = clan.MID
-            if (clan.hasOwnProperty('Date')) {
-                date = processDate(clan.Date)
-                date = ['<span class="date">建于：<span class="desc-color">', date, '</span></span>'].join('')
-            } else date = ''
-            if (clan.hasOwnProperty('Logo')) logo = clan.Logo
-            if (logo) {
-                logoURL = '<img src="img/clan/' + ID + '/0.' + fileExtList[logo] + '">'
-            } else {
-                let LogoID = parseInt(Math.random() * rLogo.length)
-                logoURL = '<img src="img/icons/clanEmblems1x/clan-icon-v2-' + rLogo[LogoID] + '.png">'
-            }
-            toRepeat(MID, desc)
-            if (toRepeat(MID, desc)) {
-                desc = toRepeat(MID, desc)
-            }
-            desc = desc.replace(/\n/g, '<br>')
-            $('#recommend').append('<div class="clan-card" data-clan-id=' + ID + '>' +
-                '<div class="logo">' + logoURL + '</div>' +
-                '<div class="card-content">' +
-                '<span class="orange">' + tag + ' ' + fname + '</span>' +
-                '<br>ID：<span class="desc-color">' + ID + '</span>' + date +
-                '<div class="desc-color">' + desc + '</div></div></div>')
+    /* 搜索侧：渲染结果表 */
+    function renderSearchResults(keyword) {
+        if (!el.tbody) return;
+        el.tbody.innerHTML = '';
+        var result = toCompare(keyword, clanData);
+        changeTitle('搜索到', result.length);
+        if (!result.length) {
+            el.tbody.insertAdjacentHTML('beforeend', '<tr><td>未搜索到相关内容，相关军团可能尚未收录</td></tr>');
+        } else {
+            for (var i = 0; i < result.length; i++) insertData(result, i, 'table');
         }
-        indexList = []
+        slideClose(el.announcement, 250);
+        $$('.flipBtn').forEach(hideEl);
+        showInline(ensureBackButton());
     }
-    showRecommend()
-})
+
+    function showSearchResults(keyword) {
+        hideEl(el.recommend);
+        showBlock(el.table);
+        restorePosition();
+        renderSearchResults(keyword);
+    }
+
+    function startSearching(alertWhenEmpty) {
+        var keyword = readKeyword();
+        if (!keyword) {
+            if (alertWhenEmpty) alert('您还没有输入关键词！');
+            return;
+        }
+        window.history.pushState({ page: 'search', keyword: keyword }, '', '?keyword=' + encodeURIComponent(keyword));
+        showSearchResults(keyword);
+        recordSearchAction(keyword);
+    }
+
+    function readKeyword() {
+        return el.searchInput ? el.searchInput.value.trim() : '';
+    }
+
+    function backToRecommend(useHistory) {
+        beginIndex = 0;
+        endingIndex = STEP_LENGTH - 1;
+        dataIndex = 0;
+        hideEl(backBtn);
+        hideEl(el.table);
+        showBlock(el.recommend);
+        if (useHistory !== false) window.history.replaceState({ page: 'home' }, '', './');
+        showRecommend();
+    }
+
+    /* 详情侧 */
+    function openDetailWindow() {
+        if (!isDetailOpen()) fadeIn(el.detail, 400);
+        expandDetailInner();
+        scrollFlag = false;
+    }
+
+    function renderDetail(cid) {
+        var id = String(cid == null ? '' : cid);
+        if (!id) return;
+        var numeric = Number(id);
+        if (isNaN(numeric) && id.indexOf('隐藏') === -1) return;
+        if ((numeric === 0 || numeric % 1 !== 0) && id.indexOf('隐藏') === -1) return;
+
+        var hit = toCompare(id, clanData, 'id');
+        if (!hit.length) return;
+
+        currentCid = id;
+        el.detailContent.style.display = '';
+        insertData(hit, 0, 'detail');
+        applyDetailMeta(hit[0]);
+        if (el.detailWindow) el.detailWindow.scrollTop = 0;
+        openDetailWindow();
+    }
+
+    function openDetail(cid, useHistory) {
+        if (useHistory !== false) {
+            window.history.pushState({ page: 'detail', cid: String(cid) }, '', '?cid=' + encodeURIComponent(cid));
+        }
+        renderDetail(cid);
+    }
+
+    function closeDetail(useHistory) {
+        if (useHistory !== false) window.history.replaceState({ page: 'home' }, '', './');
+        collapseDetailInner();
+        fadeOut(el.detail, 600, function () {
+            if (el.detailContent) el.detailContent.innerHTML = '';
+            if (el.detailWindow) {
+                el.detailWindow.style.transform = 'translateY(0px)';
+                el.detailWindow.scrollTop = 0;
+            }
+        });
+        restoreMeta();
+        scrollFlag = false;
+    }
+
+    /* ===================== 首页推荐 ===================== */
+    function showRecommend() {
+        if (!el.recommend) return;
+        el.recommend.innerHTML = '';
+        changeTitle('军团推荐');
+
+        if (!recommendPool.length) {
+            el.recommend.innerHTML = '<p>暂无推荐</p>';
+            return;
+        }
+
+        var picked = [];
+        var familySeen = [];
+        var guard = 0;
+        while (picked.length < RECOMMEND_COUNT && guard < 500) {
+            guard++;
+            var rand = Math.floor(Math.random() * recommendPool.length);
+            if (picked.indexOf(rand) !== -1) continue;
+            var clan = recommendPool[rand];
+            if (clan.MID != null && familySeen.indexOf(clan.MID) !== -1) continue;   // 同一军团族只出一个
+            picked.push(rand);
+            if (clan.MID != null) familySeen.push(clan.MID);
+        }
+
+        var html = '';
+        for (var k = 0; k < picked.length; k++) {
+            var item = recommendPool[picked[k]];
+            var ID = item.ID;
+            var tag = '[' + item.Tag + ']';
+            var full = item.Full;
+            var desc = item.Desc == null ? '' : String(item.Desc);
+
+            var rep = resolveRepeat(item.MID, desc);
+            if (rep) desc = rep.Desc;      // FIX: 原版把 {Desc} 对象赋给 desc，下一行 replace 直接抛错
+
+            var dateHTML = '';
+            if (item.Date) {
+                dateHTML = '<span class="date">建于：<span class="desc-color">' + escapeHTML(processDate(item.Date)) + '</span></span>';
+            }
+
+            var logoHTML;
+            if (item.Logo && FILE_EXT[item.Logo]) {
+                logoHTML = '<img src="img/clan/' + ID + '/0.' + FILE_EXT[item.Logo] + '">';
+            } else {
+                logoHTML = '<img src="img/icons/clanEmblems1x/clan-icon-v2-' + rLogo[Math.floor(Math.random() * rLogo.length)] + '.png">';
+            }
+
+            html += '<div class="clan-card" data-clan-id="' + escapeHTML(ID) + '">' +
+                '<div class="logo">' + logoHTML + '</div>' +
+                '<div class="card-content">' +
+                '<span class="orange">' + escapeHTML(tag + ' ' + full) + '</span><br>' +
+                'ID：<span class="desc-color">' + escapeHTML(ID) + '</span>' + dateHTML +
+                '<div class="desc-color">' + escapeHTML(desc).replace(/\n/g, '<br>') + '</div>' +
+                '</div></div>';
+        }
+        el.recommend.insertAdjacentHTML('beforeend', html);
+    }
+
+    /* ===================== 分页浏览（保留原有逻辑） ===================== */
+    function fetchData() {
+        restorePosition();
+        var total = clanData.length;
+        if (!total || !el.tbody) return;
+
+        changeTitle('收录', total);
+        if (beginIndex <= 0) hideEl($('.flipBtn.prev')); else showInline($('.flipBtn.prev'));
+        if (endingIndex >= total - 1) hideEl($('.flipBtn.next')); else showInline($('.flipBtn.next'));
+
+        if (beginIndex < 0) beginIndex = 0;
+        var last = Math.min(endingIndex, total - 1);
+
+        el.tbody.innerHTML = '';
+        for (var i = beginIndex; i <= last; i++) insertData(clanData, i, 'table');
+    }
+
+    /* ===================== 埋点 ===================== */
+    function recordSearchAction(keyword) {
+        try {
+            fetch(RECORD_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                body: new URLSearchParams({ keyword: keyword }).toString(),
+                mode: 'cors',
+                keepalive: true
+            }).catch(function () { /* 埋点失败不影响主流程 */ });
+        } catch (e) { /* 忽略 */ }
+    }
+
+    /* ===================== 事件绑定 ===================== */
+    var touchStartY = 0;
+    var touchDistance = 0;
+
+    function bindEvents() {
+        var prevBtn = $('.flipBtn.prev');
+        var nextBtn = $('.flipBtn.next');
+
+        on(nextBtn, 'click', function () {
+            beginIndex += STEP_LENGTH;
+            endingIndex += STEP_LENGTH;
+            dataIndex = beginIndex;
+            fetchData();
+        });
+        on(prevBtn, 'click', function () {
+            beginIndex -= STEP_LENGTH;
+            endingIndex -= STEP_LENGTH;
+            dataIndex = beginIndex;
+            fetchData();
+        });
+
+        /* ---- 搜索框 ---- */
+        on(el.searchBtn, 'click', function () {
+            if (!readKeyword()) return;
+            startSearching(false);
+        });
+        on(el.resetBtn, 'click', function () {
+            if (!el.searchInput) return;
+            el.searchInput.value = '';
+            el.searchInput.focus();
+            updateResetBtn();
+        });
+        on(el.searchInput, 'input', updateResetBtn);
+        on(el.searchInput, 'focus', function () { updateResetBtn(); slideOpen(el.announcement, 250); });
+        on(el.searchInput, 'click', function () { this.select(); slideOpen(el.announcement, 250); });
+        on(el.searchInput, 'keydown', function (e) {
+            if (e.key === 'Enter' || e.which === 13) startSearching(true);
+        });
+
+        /* ---- Ctrl/Cmd + F ---- */
+        on(document, 'keydown', function (e) {
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F' || e.which === 70)) {
+                e.preventDefault();
+                if (el.searchInput) { el.searchInput.focus(); el.searchInput.select(); }
+                if (isDetailOpen()) closeDetail(true);
+            }
+        });
+
+        /* ---- 点击空白处收起公告栏 ---- */
+        on(document, 'click', function (e) {
+            var target = e.target;
+            if (!target.closest) return;
+            var inSearch = target.closest('#searchstr');
+            var inWrap = target.closest('#announcement_zone .wrap');
+            var inCollapse = target.closest('#announcement_zone .toCollapse');
+            if ((!inSearch && !inWrap) || inCollapse) slideClose(el.announcement, 250);
+        });
+
+        /* ---- 点击列表行 / 推荐卡 打开详情 ---- */
+        on(document, 'click', function (e) {
+            if (!e.target.closest) return;
+            var row = e.target.closest('#content tbody tr[data-clan-id], .clan-card[data-clan-id]');
+            if (!row) return;
+            openDetail(row.getAttribute('data-clan-id'));
+        });
+
+        /* ---- 行按下高亮反馈 ---- */
+        on(document, 'mousedown', function (e) {
+            if (!e.target.closest) return;
+            var row = e.target.closest('#content tbody tr[data-clan-id]');
+            if (row && e.which === 1) row.style.backgroundColor = 'rgba(70, 94, 109, 0.5)';
+        });
+        on(document, 'mouseup', function (e) {
+            if (!e.target.closest) return;
+            var row = e.target.closest('#content tbody tr[data-clan-id]');
+            if (row) row.style.backgroundColor = '';
+        });
+
+        /* ---- 族内切换 ---- */
+        on(el.detail, 'click', function (e) {
+            if (!e.target.closest) return;
+            var cell = e.target.closest('.clanFamily [data-clan-id]');
+            if (!cell) return;
+            var cid = cell.getAttribute('data-clan-id');
+            window.history.pushState({ page: 'detail', cid: cid }, '', '?cid=' + encodeURIComponent(cid));
+            fadeOut(el.detailContent, 250, function () {
+                el.detailContent.innerHTML = '';
+                renderDetail(cid);
+                fadeIn(el.detailContent, 350);
+            });
+        });
+
+        /* ---- 关闭浮层 ---- */
+        on(el.detail, 'click', function (e) {
+            var target = e.target;
+            if (!target.closest) return;
+            var insideWindow = target.closest('#detail .inner *');
+            var isDismiss = target.closest('#detail .dismissBtn');
+            if (!insideWindow || isDismiss) closeDetail(true);
+        });
+        on(el.detail, 'keydown', function () { closeDetail(true); });
+
+        /* ---- 触摸下拉关闭 ---- */
+        on(el.detailContent, 'touchstart', function (e) {
+            touchStartY = e.touches[0].pageY;
+        }, { passive: true });
+        on(el.detailContent, 'touchmove', function (e) {
+            touchDistance = e.touches[0].pageY - touchStartY;
+            if (el.detailWindow && el.detailWindow.scrollTop <= 0 && !scrollFlag) {
+                el.detailWindow.style.transform = 'translateY(' + (0.1875 * touchDistance) + 'px)';
+            }
+        }, { passive: true });
+        on(el.detailContent, 'touchend', function () {
+            if (!el.detailWindow) return;
+            if (el.detailWindow.scrollTop > 0) scrollFlag = false;
+            if (touchDistance < -0.2 * el.detailWindow.clientHeight) scrollFlag = true;
+            if (touchDistance > 128 && el.detailWindow.scrollTop <= 0 && !scrollFlag) {
+                touchDistance = 0;
+                closeDetail(true);
+            } else {
+                el.detailWindow.style.transform = 'translateY(0px)';
+            }
+        });
+
+        /* ---- 浏览器前进/后退 ---- */
+        on(window, 'popstate', function () {
+            var cid = getQueryStr('cid');
+            var keyword = getQueryStr('keyword');
+            if (cid) {
+                renderDetail(cid);
+            } else if (keyword) {
+                if (isDetailOpen()) closeDetail(false);
+                if (el.searchInput) el.searchInput.value = keyword;
+                updateResetBtn();
+                showSearchResults(keyword);
+            } else {
+                if (isDetailOpen()) closeDetail(false);
+                backToRecommend(false);
+            }
+        });
+
+        on(window, 'resize', calcTableHeight);
+    }
+
+    /* ===================== 启动 ===================== */
+    function boot() {
+        for (var i = 0; i <= 24; i++) rLogo.push(10000 + i);
+        for (var j = 2; j <= 26; j++) rLogo.push(20000 + j);
+
+        bindEvents();
+        calcTableHeight();
+        updateResetBtn();
+        setMetaImage('favicon.ico');
+
+        loadData().then(function () {
+            recommendPool = toCompare(undefined, clanData, 'analysis');
+            showRecommend();
+
+            var cid = getQueryStr('cid');
+            var keyword = getQueryStr('keyword');
+            if (cid) {
+                renderDetail(cid);
+            } else if (keyword) {
+                if (el.searchInput) el.searchInput.value = keyword;
+                updateResetBtn();
+                showSearchResults(keyword);
+            }
+        });
+    }
+
+    boot();
+})();
